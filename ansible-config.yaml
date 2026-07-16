@@ -1,0 +1,726 @@
+---
+- name: Remove potentially conflicting Docker APT repository files
+  hosts: r4a_nodes
+  become: true
+  tasks:
+    - name: Remove potentially conflicting Docker APT repository files
+      become: true
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/apt/sources.list.d/docker.list
+        - /etc/apt/trusted.gpg.d/docker.asc
+        - /etc/apt/keyrings/docker.asc
+
+- name: Install Prerequisites for R4A Nodes
+  hosts: r4a_nodes
+  become: true
+  vars_files:
+    - vars/main.yml
+  vars:
+    cadvisor_port: "{{ cadvisor_port }}"
+
+  tasks:
+    - name: Set Primary host
+      set_fact:
+        r4a_primary_host: "{{ hostvars[groups['r4a_primary'][0]].ansible_host }}"
+      run_once: true
+
+    - name: Configure Docker daemon for insecure registry
+      ansible.builtin.template:
+        src: templates/docker-daemon.json.j2
+        dest: /etc/docker/daemon.json
+        owner: root
+        group: root
+        mode: '0644'
+      become: yes
+      notify: restart docker
+
+    - name: Force handlers to run if needed
+      meta: flush_handlers
+
+    - name: Print the contents of the Docker daemon configuration file
+      ansible.builtin.command: cat /etc/docker/daemon.json
+      register: docker_daemon_config
+      changed_when: false
+      become: yes
+
+    - name: Show Docker daemon configuration file contents
+      ansible.builtin.debug:
+        var: docker_daemon_config.stdout
+
+    - name: Ensure ansible_user default shell is /bin/bash
+      ansible.builtin.user:
+        name: "{{ ansible_user }}"
+        shell: /bin/bash
+      become: true
+
+    - name: Check apt proxy file exists
+      stat:
+        path: "/etc/apt/apt.conf.d/proxy.conf"
+      register: apt_proxy_file
+
+    - name: Comment out http Proxy
+      lineinfile:
+        path: "/etc/apt/apt.conf.d/proxy.conf"
+        regexp: '^(Acquire::http::Proxy.*)'
+        line: '#\1'
+      when: apt_proxy_file.stat.exists
+
+    - name: Comment out https Proxy
+      lineinfile:
+        path: "etc/apt/apt.conf.d/proxy.conf"
+        regexp: '^Acquire::https::Proxy.*)'
+        line: '#\1'
+      when: apt_proxy_file.stat.exists
+
+    - name: Update and upgrade apt packages
+      apt:
+        upgrade: true
+        update_cache: true
+
+    - name: Install desired sys packages
+      apt:
+        pkg:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - lsb-release
+          - gnupg
+          - vim
+          - sshpass
+          - openssh-server
+          - locate
+          - git
+          - net-tools
+          - xauth
+          - python3-pip
+          - pulseaudio
+          - pulseaudio-utils
+        state: latest
+        update_cache: true
+
+    - name: Check if service exists 
+      stat: path=/etc/init.d/ntp
+      register: ntp_status
+
+    - name: Install ntp
+      apt: pkg=ntp state=present
+
+    - name: Start ntp
+      service: name=ntp state=started enabled=true
+      when: ntp_status.stat.exists
+
+    - name: Setup Passhpraseless Sudo
+      lineinfile:
+        path: /etc/sudoers
+        state: present
+        regexp: '^%sudo'
+        line: '%sudo ALL=(ALL:ALL) NOPASSWD: ALL'
+        validate: 'visudo -cf %s'
+
+    - name: Determine available groups
+      getent:
+        database: group
+
+    - name: Ensure docker group exists
+      group:
+        name: docker
+        state: present
+      register: docker_group
+
+    - name: Add existing user {{ ansible_user }} to desired groups
+      user: 
+        name: "{{ ansible_user }}"
+        groups: "{{ item }}"
+        append: yes
+      when: item in ansible_facts.getent_group
+      with_items:
+        - docker
+        - sudo
+
+    - name: Enable X11 forwarding
+      lineinfile:
+        dest: /etc/ssh/sshd_config
+        regexp: '^X11Forwarding'
+        line: 'X11Forwarding yes'
+      notify:
+        - restart_ssh
+
+      #    - name: Install psutil python package
+      #ansible.builtin.pip:
+      #name: psutil
+
+    - name: Determine if PipeWire or PulseAudio is being used
+      command: systemctl --user is-active pipewire-pulse.service
+      register: pipewire_active
+      ignore_errors: true
+      changed_when: false
+      become: true
+      become_user: "{{ ansible_user }}"
+      environment:
+        DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ ansible_user_uid }}/bus"
+      vars:
+        ansible_user_uid: "{{ lookup('ansible.builtin.pipe', 'id -u ' + ansible_user) }}"
+
+    - name: Replace pulseaudio daemon config (if needed for PipeWire)
+      ansible.builtin.copy:
+        src: daemon.conf
+        dest: /etc/pulse
+        force: yes
+        owner: "root"
+      when: pipewire_active.rc != 0
+
+    - name: Remove root pulseaudio directories from crash if they exist
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /tmp/pulseaudio.client.conf
+        - /tmp/pulseaudio.socket
+      become: true 
+
+    - name: Copy pulse audio config
+      ansible.builtin.copy:
+        src: pulseaudio.client.conf
+        dest: /tmp
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: u=rw,g=r,o=r
+        force: yes
+      when: pipewire_active.rc != 0
+
+    - name: kill pulseaudio
+      become: false
+      ansible.builtin.command: pulseaudio --kill
+      register: pulseaudio_kill
+      ignore_errors: true
+      when: pipewire_active.rc != 0
+
+    - name: Pulseaudio kill result 
+      debug:
+        var: pulseaudio_kill
+
+    - name: Get UID for pulseaudio_user
+      command: id -u {{ pulseaudio_user }}
+      register: uid_result
+      changed_when: false
+      ignore_errors: true
+
+    - name: Show ID for pulseaudio user
+      debug:
+        var: uid_result.stdout
+
+    - name: Start pulseaudio socket
+      become: true
+      become_user: "{{ pulseaudio_user }}" 
+      ansible.builtin.command: pactl load-module module-native-protocol-unix socket=/tmp/pulseaudio.socket
+      environment:
+        XDG_RUNTIME_DIR: "/run/user/{{ uid_result.stdout }}"
+      when: uid_result.rc == 0 and pipewire_active.rc != 0
+      register: pulseaudio_pid
+      ignore_errors: true
+
+    - name: Wait for pulseaudio to be ready
+      ansible.builtin.wait_for:
+        path: "{{ '/run/user/' + uid_result.stdout + '/pulse/native' if pipewire_active.rc == 0 else '/tmp/pulseaudio.socket' }}"
+        state: present
+      become: yes
+      become_user: "{{ pulseaudio_user }}"
+      retries: 5
+      delay: 2
+      ignore_errors: true
+    
+    - name: Print pulseaudio socket pid
+      ansible.builtin.debug: 
+        msg: "{{ 'PipeWire PulseAudio compatibility socket is active' if pipewire_active.rc == 0 else 'PulseAudio socket started with PID: ' + pulseaudio_pid.stdout }}"
+
+    - name: Get env variable git clone directory for project
+      set_fact:
+        r4a_github_dir: "{{ lookup('env', 'R4ALL_DIR') }}"
+ 
+    - name: Set 'R4ALL_DIR' in .bashrc for the current user
+      ansible.builtin.lineinfile:
+        path: "/home/{{ ansible_user }}/.bashrc"
+        line: 'export R4ALL_DIR="{{ r4a_github_dir }}"'
+        state: present
+
+    - name: Ensure metrics directory exists
+      ansible.builtin.file:
+        path: "{{ host_metrics_dir }}"
+        state: directory
+        owner: root
+        group: root
+        recurse: true
+        mode: 'u=rwX,g=rwX,o=rwX'
+
+    - name: Ensure metrics directory exists
+      ansible.builtin.file:
+        path: "/home/{{ ansible_user }}/Documents"
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        recurse: true
+
+  handlers:
+    - name: restart_ssh 
+      service:
+        name: ssh
+        state: restarted
+        enabled: true
+    - name: restart docker
+      ansible.builtin.systemd:
+        name: docker
+        state: restarted
+      become: true
+
+  roles:
+    - geerlingguy.docker
+    - prometheus.prometheus.cadvisor
+
+- hosts: r4a_primary
+  name: Install Prometheus server and Node Exporter on r4a_primary
+  vars_files:
+    - vars/main.yml
+  become: true
+  roles:
+    - prometheus.prometheus.prometheus
+    - prometheus.prometheus.node_exporter
+
+  tasks:
+    - name: Set Primary host
+      set_fact:
+        r4a_primary_host: "{{ hostvars[groups['r4a_primary'][0]].ansible_host }}"
+      run_once: true
+
+    - name: Check if r4a_secondary group has hosts
+      set_fact:
+        r4a_secondary_has_hosts: "{{ groups['r4a_secondary'] | length > 0 }}"
+
+    - name: Ensure Harbor storage directory exists
+      ansible.builtin.file:
+        path: "{{ harbor_storage_dir }}"
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: docker
+        mode: '0777'  # Group-writable permissions
+      when: r4a_secondary_has_hosts
+
+    - name: Create Docker registry configuration directory
+      ansible.builtin.file:
+        path: "{{ harbor_storage_dir }}/config"
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Copy Docker registry configuration file
+      ansible.builtin.copy:
+        src: config.yml
+        dest: "{{ harbor_storage_dir }}/config/config.yml"
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Start Harbor registry container
+      docker_container:
+        name: harbor-registry
+        image: registry:2 
+        ports:
+          - "5000:5000"
+        volumes:
+          - "{{ harbor_storage_dir }}/storage"
+          - "{{ harbor_storage_dir }}/data:/var/lib/registry"
+          - "{{ harbor_storage_dir }}/config/config.yml:/etc/docker/registry/config.yml"
+        env:
+          REGISTRY_STORAGE_DELETE_ENABLED: "true"
+        restart_policy: always
+        state: started
+      when: r4a_secondary_has_hosts
+
+    - name: Check if the Docker image exists locally
+      community.docker.docker_image_info:
+        name: "r4all:0.0.1"
+      register: docker_image_info
+
+    - name: Build the Docker image if it does not exist
+      community.docker.docker_image:
+        build:
+          path: "."
+          dockerfile: Dockerfile
+          args:
+            package_url: "https://storage.openvinotoolkit.org/repositories/openvino/packages/2023.3/linux/l_openvino_toolkit_ubuntu22_2023.3.0.13775.ceeafaf64f3_x86_64.tgz"
+        name: "r4all"
+        tag: "0.0.1"
+        nocache: true
+        source: build
+      args:
+        chdir: "{{ lookup('ansible.builtin.env', 'R4ALL_DIR') }}"
+      when: not docker_image_info.images  | length == 1
+
+    - name: Reset value of docker_image_info post_build
+      community.docker.docker_image_info:
+        name: "r4all:0.0.1"
+      register: docker_image_info
+
+    - name: Tag and push the Docker image to Harbor registry
+      community.docker.docker_image:
+        name: "r4all"
+        tag: "0.0.1"
+        repository: "{{ r4a_primary_host }}:5000/r4all"
+        push: yes
+        source: local
+      when: docker_image_info.images  | length == 1
+
+    - name: Launch Nginx container
+      community.docker.docker_container:
+        name: nginx
+        image: nginx:latest
+        state: started
+        restart_policy: always
+        ports:
+          - "{{ nginx_port }}:{{ nginx_port }}"
+        volumes:
+          - "{{ host_metrics_dir }}:/usr/share/nginx/html:ro"
+          - "{{ r4a_github_dir }}/nginx/custom_location.conf:/etc/nginx/conf.d/custom_location.conf:ro"
+        recreate: true
+
+    - name: Generate list of Node Exporter targets
+      set_fact:
+        node_exporter_targets: "{{ groups['r4a_nodes'] | map('extract', hostvars, 'ansible_host') | map('regex_replace', '^(.*)$', '\\1:' ~ node_exporter_port) | list }}"
+
+    - name: Show targets for node_exporter
+      debug:
+        var: node_exporter_targets
+
+    - name: Generate list of cAdvisor targets
+      set_fact:
+        cadvisor_targets: "{{ groups['r4a_nodes'] | map('extract', hostvars, 'ansible_host') | map('regex_replace', '^(.*)$', '\\1:' ~ cadvisor_port) | list }}"
+
+    - name: Show targets for cadvisor
+      debug:
+        var: cadvisor_targets
+
+    - name: Configure Prometheus to scrape Node Exporter and cAdvisor metrics
+      template:
+        src: templates/prometheus.yml.j2
+        dest: /etc/prometheus/prometheus.yml
+        owner: prometheus
+        group: prometheus
+        mode: 0644
+      notify: restart prometheus
+
+    - name: Determine Grafana URL
+      set_fact:
+        grafana_url: "http://{{ ansible_host }}:{{ grafana_port }}"
+      delegate_to: "{{ item }}"
+      with_items: "{{ groups['r4a_primary'] }}"
+      run_once: true
+
+    - name: Set Grafana admin password from environment variable
+      set_fact:
+        grafana_admin_password: "{{ lookup('env', 'GRAFANA_ADMIN_PASSWORD') }}"
+
+    - name: Add Grafana GPG key
+      apt_key:
+        url: 'https://packages.grafana.com/gpg.key'
+        state: present
+
+    - name: Add Grafana APT repository
+      apt_repository:
+        repo: deb https://packages.grafana.com/oss/deb stable main
+        state: present
+
+    - name: Install Grafana
+      apt:
+        name: grafana
+        state: latest
+        update_cache: true
+
+    - name: Ensure Grafana plugins directory has correct permissions
+      ansible.builtin.file:
+        path: /var/lib/grafana/plugins
+        state: directory
+        owner: grafana
+        group: grafana
+        mode: '0755'
+        recurse: true
+      become: true
+
+    - name: Enable and start Grafana service
+      systemd:
+        name: grafana-server
+        enabled: true
+        state: started
+        daemon_reload: true
+
+    - name: Wait for Grafana to be available
+      wait_for:
+        host: "{{ r4a_primary_host }}"
+        port: 3000
+        state: started
+        delay: 10
+        timeout: 60
+
+    - name: Check if the current Grafana admin password is already set to the desired password
+      uri:
+        url: "{{ grafana_url }}/api/users/lookup?loginOrEmail={{ grafana_admin_user }}"
+        method: GET
+        user: "{{ grafana_admin_user }}"
+        password: "{{ grafana_admin_password }}"
+        force_basic_auth: true
+        status_code: 200
+      register: grafana_password_check
+      ignore_errors: true
+
+    - name: Get Grafana HOMEPATH
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          ps -fp $(lsof -t -i :3000) | awk '{print $8}' | tail -1 | awk -F'bin' '{print $1}'
+      args:
+        executable: /bin/bash
+      become: true
+      register: grafana_homepath
+
+    - name: Change default Grafana admin password
+      ansible.builtin.command:
+        cmd: "grafana cli --homepath {{ grafana_homepath.stdout }} admin reset-admin-password '{{ grafana_admin_password | quote }}'"
+      become: true
+      when: grafana_password_check is failed
+      no_log: true  # To avoid logging sensitive information
+
+    - name: Add Prometheus as a data source in Grafana
+      community.grafana.grafana_datasource:
+        name: "Prometheus"
+        url: "{{ grafana_url }}"
+        grafana_user: "{{ grafana_admin_user }}"
+        grafana_password: "{{ grafana_admin_password }}"
+        ds_type: "prometheus"
+        ds_url: "http://{{ r4a_primary_host }}:9090"
+        state: present
+
+    - name: Get Prometheus data source UID
+      uri:
+        url: "{{ grafana_url }}/api/datasources/name/Prometheus"
+        method: GET
+        user: "{{ grafana_admin_user }}"
+        password: "{{ grafana_admin_password }}"
+        force_basic_auth: yes
+        return_content: yes
+        status_code: 200
+      register: prometheus_datasource_info
+    
+    - name: Set Prometheus data source UID fact
+      set_fact:
+        prometheus_datasource_uid: "{{ prometheus_datasource_info.json.uid }}"
+
+    - name: Print Grafana user and password
+      debug:
+        msg: "Grafana user is {{ grafana_admin_user }} and password is {{ grafana_admin_password }}"
+
+    - name: Look up Grafana dashboards
+      set_fact:
+        grafana_dashboards: |
+          {{ 
+            lookup(
+              'grafana_dashboard', 
+              'grafana_url={{ grafana_url }} grafana_password={{ grafana_admin_password }} grafana_admin={{ grafana_admin_user }}'
+            )
+          }}
+
+    - name: Print Grafana Dashboards
+      debug:
+        msg: "GRAFANA_DASHBOARDS===> {{ grafana_dashboards}}"
+
+    - name: Install node_exporter Grafana Dashboard
+      community.grafana.grafana_dashboard:
+        url: "{{ grafana_url }}"
+        grafana_user: "{{ grafana_admin_user }}"
+        grafana_password: "{{ grafana_admin_password }}"
+        state: present
+        path: "https://grafana.com/api/dashboards/1860/revisions/37/download"
+        overwrite: true
+
+    - name: Download cadvisor Grafana Dashboard JSON
+      get_url:
+        url: "https://grafana.com/api/dashboards/15798/revisions/12/download"
+        dest: "/tmp/cadvisor_dashboard.json"
+        mode: '0644'
+
+    - name: Replace DS_GRAFANACLOUD-SHIZUN-PROM with actual data source UID
+      replace:
+        path: "/tmp/cadvisor_dashboard.json"
+        regexp: '("?)\${?DS_GRAFANACLOUD-SHIZUN-PROM}("?)'
+        replace: '\1{{ prometheus_datasource_uid }}\2'
+
+    - name: Install cadvisor Grafana Dashboard
+      community.grafana.grafana_dashboard:
+        url: "{{ grafana_url }}"
+        grafana_user: "{{ grafana_admin_user }}"
+        grafana_password: "{{ grafana_admin_password }}"
+        state: present
+        path: "/tmp/cadvisor_dashboard.json"
+        overwrite: true
+
+    - name: Install Grafana plugin using grafana-cli
+      ansible.builtin.command:
+        cmd: "grafana cli --homepath {{ grafana_homepath.stdout }} plugins install yesoreyeram-infinity-datasource"
+      become: true
+      notify: restart grafana
+
+    - name: Download sample data file to /var/www directory
+      ansible.builtin.get_url:
+        url: "https://thingspeak.com/channels/38629/feed.csv"
+        dest: "{{ host_metrics_dir }}/feed.csv"
+        mode: "0644"
+
+    - name: Create new Infinity data source
+      uri:
+        url: "{{ grafana_url }}/api/datasources"
+        method: POST
+        user: "{{ grafana_admin_user }}"
+        password: "{{ grafana_admin_password }}"
+        force_basic_auth: true
+        body_format: json
+        headers:
+          Content-Type: "application/json"
+        body:
+          {
+            "name": "Infinity-sample",
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "infinity-universal",
+            "access": "proxy",
+            "url": "http://{{ r4a_primary_host }}:{{ nginx_port }}/feed.csv",
+            "jsonData": {},
+            "secureJsonData": {}
+          }
+        status_code: [200, 201, 409]
+    
+    - name: Find all dashboard JSON files in the specified directory
+      ansible.builtin.find:
+        paths: "{{ r4a_github_dir }}/dashboards"
+        patterns: "*.json"
+      register: dashboard_files
+
+    - name: Add all Infinity dashboards
+      community.grafana.grafana_dashboard:
+        url: "{{ grafana_url }}"
+        grafana_user: "{{ grafana_admin_user }}"
+        grafana_password: "{{ grafana_admin_password }}"
+        state: present
+        path: "{{ item.path }}"
+        overwrite: true
+      loop: "{{ dashboard_files.files }}"
+
+    - name: Add Infinity datasource for each host in r4a_nodes
+      uri:
+        url: "{{ grafana_url }}/api/datasources"
+        method: POST
+        user: "{{ grafana_admin_user }}"
+        password: "{{ grafana_admin_password }}"
+        force_basic_auth: true
+        body_format: json
+        headers:
+          Content-Type: "application/json"
+        body: |
+          {
+            "name": "Infinity-{{ item[1][:3] }}",
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "infinity-{{ item[1][:3] }}",
+            "access": "proxy",
+            "url": "http://{{ hostvars[item[0]].ansible_host }}:{{ nginx_port }}/",
+            "jsonData": {},
+            "secureJsonData": {}
+          }
+        status_code: [200, 201, 409]  # 200 OK, 201 Created, 409 Conflict (already exists)
+      loop: "{{ groups['r4a_nodes'] | product(infinity_metrics_files) | list}}"
+      delegate_to: localhost
+      run_once: true
+
+  handlers:
+    - name: restart prometheus
+      systemd:
+        name: prometheus
+        state: restarted
+        daemon_reload: true
+
+    - name: restart grafana
+      systemd:
+        name: grafana-server
+        state: restarted
+        daemon_reload: yes
+
+- hosts: r4a_secondary
+  name: Configure r4a_secondary nodes
+  vars_files:
+    - vars/main.yml
+  become: true
+  roles:
+    - prometheus.prometheus.node_exporter
+  tasks:
+    - name: Set Grafana host
+      set_fact:
+        r4a_primary_host: "{{ hostvars[groups['r4a_primary'][0]].ansible_host }}"
+      run_once: true
+
+    - name: Get env variable git clone directory for project
+      set_fact:
+        r4a_github_dir: "{{ lookup('env', 'R4ALL_DIR') }}"
+
+    - name: Copy GitHub directory to secondary hosts
+      ansible.posix.synchronize:
+        src: "{{ r4a_github_dir }}/" # The slash is necessary do not remove otherwise you'll have duplicate directory name
+        dest: "{{ r4a_github_dir }}"
+        owner: true # preserve the user ownership
+        group: true # preserve the group ownership
+        delete: false
+        recursive: true
+
+    - name: Copy Secrets file to secodary hosts
+      ansible.posix.synchronize:
+        src: "{{ r4a_secrets_file }}"
+        dest: "{{ r4a_secrets_file }}"
+        owner: true
+        group: true
+        delete: true
+          # enpicket
+    - name: Launch Nginx container
+      community.docker.docker_container:
+        name: nginx
+        image: nginx:latest
+        state: started
+        restart_policy: always
+        ports:
+          - "{{ nginx_port }}:{{ nginx_port }}"
+        volumes:
+          - "{{ host_metrics_dir }}:/usr/share/nginx/html:ro"
+          - "{{ r4a_github_dir }}/nginx/custom_location.conf:/etc/nginx/conf.d/custom_location.conf:ro"
+        recreate: true
+
+    - name: Pull r4all image from Harbor registry asynchronously
+      community.docker.docker_image:
+        name: "{{ r4a_primary_host }}:{{ registry_port }}/r4all"
+        tag: "0.0.1"
+        source: pull
+      async: 3600  # Run the task asynchronously for up to 1 hour (3600 seconds)
+      poll: 0  # Fire and forget, do not poll for the task status
+      register: pull_image_result
+
+    - name: Check on async task results
+      async_status:
+        jid: "{{ pull_image_result.ansible_job_id }}"
+      register: job_result
+      until: job_result.finished
+      retries: 60  # Number of retries (e.g., 60 retries)
+      delay: 60  # Delay in seconds between retries (e.g., check every 1 minute)
+      when: pull_image_result.ansible_job_id is defined
+
+    - name: Retag the r4all Docker image with a short name
+      community.docker.docker_image:
+        name: "{{ r4a_primary_host }}:{{ registry_port }}/r4all"
+        tag: "0.0.1"
+        repository: "r4all"
+        push: no
+        source: local

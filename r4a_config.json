@@ -1,0 +1,102 @@
+{
+    "source_lang": {
+    	"value": "en",
+	"desc": "The source language being spoken"
+    },
+    "target_lang": {
+    	"value": "en",
+	"desc": "The target languge to translate to"
+    },
+    "openapi_key": {
+    	"value": "OPENAI_KEY",
+	"desc": "oAuth key for OpenAPI"
+    },
+    "detection_key": {
+    	"value": "DETECTION_KEY",
+	"desc": "Key to log into language detection website"
+    },
+    "hugging_face_key": {
+    	"value": "HF_KEY",
+	"desc": "Hugging face oAuth key"
+    },
+    "tts_model": {
+    	"value": "bark",
+	"desc": "name of the text to speech model"
+    },
+    "stt_model": {
+    	"value": "small",
+	"desc": "name of the speech to text model"
+    },
+    "tts_engine": {
+	"value": "coqui",
+	"desc": "name of the speech generation engine to use"
+    },
+    "translation_model": {
+    	"value": "facebook/hf-seamless-m4t-medium",
+	"desc": "Name of the translation model"
+    },
+    "translator": {
+	"value": "Facebook",
+	"desc": "The translation provider, must be one of [Google, Facebook]"
+    },
+    "log_level": {
+    	"value": "DEBUG",
+	"desc": "Log Level"
+    },
+    "gpt": {
+    	"value": true,
+	"desc": "Respond to input using ChatGPT"
+    },
+    "nogpt": {
+        "value": false,
+        "desc": "Turn off ChatGPT response"
+    },
+    "openvino": {
+    	"value": false,
+	"desc": "Use OpenVINO to optimize the model"
+    },
+    "tts": {
+    	"value": false,
+	"desc": "Read response aloud"
+    },
+    "wpm": {
+        "value": 140,
+        "desc": "How many words per minute the generated voice will speak"
+    },
+    "whisper_prompt": {
+    	"value": "The sentence may be cut off, do not make up words to fill in the rest of the sentence",
+	"desc": "Instruct whisper on how to transcribe audio"
+    },
+    "gui": {
+        "value": true,
+	"desc": "Display messages in a web-based GUI at url http://0.0.0.0:8501 or http://localhost:8501"
+    },
+    "preload_models": {
+        "value": false,
+        "desc": "Download all models up front to the model_path"
+    },
+    "model_path": {
+    	"value": "/usr/app/models", 
+	"desc": "The path where AI models are stored"
+    },
+    "gpt4all_model": {
+    	"value": "orca-mini-3b-gguf2-q4_0.gguf",
+	"desc": "GPT4All model name"
+    },
+    "whisper_type": {
+        "value": "faster",
+    	"desc": "Choose to use faster whisper or whisper timestamped"
+    },
+    "benchmark_only": {
+        "value": false,
+    	"desc": "Choose whether you want to benchmark TTS and Translation using json prompts"
+    },
+    "audio_file_loc": {
+        "value": "/src/audio_files",
+    	"desc": "A directory or url with .wav to be files used for benchmarking transcription"
+    },
+    "speakers": {
+	"value": "espeakng,coqui,seamless,bark",
+	"desc": "A comma separated list of the speaker engines to benchmark"
+    }
+}

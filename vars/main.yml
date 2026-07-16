@@ -1,0 +1,14 @@
+pulseaudio_user: "intel-admin"
+cadvisor_port: 8080  
+r4a_secrets_file: "/home/{{ ansible_user }}/r4a_secrets.env"
+grafana_admin_user: "admin"
+grafana_default_admin_password: "admin"
+grafana_port: 3000
+grafana_url: "http://{{ r4a_primary_host }}:{{ grafana_port }}"
+node_exporter_port: 9100
+nginx_port: 80
+infinity_metrics_files: ['asr_latency.csv', 'tts_latency.csv', 'speaker_latency.csv']
+host_metrics_dir: "/var/www/metrics"
+harbor_storage_dir: "/var/harbor/storage"
+registry_host: "{{ r4a_primary_host }}"
+registry_port: "5000"

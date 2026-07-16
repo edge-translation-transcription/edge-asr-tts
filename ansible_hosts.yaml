@@ -1,0 +1,18 @@
+# Replace xxx.xxx.xxx with your host's IP address
+# Use this file in 1 of 2 ways
+# 1) run with ansible-playbook -i /path/to/this/ansible_hosts.yaml /path/to/playbook/ansible-config.yaml
+# 2) 'sudo cp ansible_hosts /etc/ansible/hosts`
+# You may want to make a backup copy of the origi9nal if you have an existing configuration.
+[all:vars]
+ansible_user=intel-admin
+remote_user=intel-admin
+
+[r4a_nodes]
+host01 ansible_host=127.0.0.1 ansible_connection=local
+# host02 ansible_host=192.168.2.197
+
+[r4a_primary]
+host01
+
+# [r4a_secondary]
+# host02

@@ -1,0 +1,7 @@
+*.swp
+*.bak
+*.log
+*.wav
+/test
+r4a_config.json.real
+__pycache__

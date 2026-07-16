@@ -1,0 +1,27 @@
+{
+  "en": {
+    "small": "The United States is a diverse country with a rich history. It is known for its innovation and cultural influence around the world.",
+    "medium": "The United States, known for its diverse landscapes and cultural richness, is a country of innovation. From the bustling streets of New York City to the serene landscapes of the Grand Canyon, it boasts a history of progress and global influence. Its cities are melting pots of various cultures, contributing to its dynamic society.",
+    "large": "The United States is a vast country with a wide range of landscapes and cultural influences. On the East Coast, you'll find historical cities like Boston and Philadelphia, which played key roles in the country's founding. Moving to the West Coast, cities like San Francisco and Los Angeles are known for their innovation and entertainment industries. The Midwest offers beautiful natural scenery and a strong agricultural economy, while the South is known for its unique cultural traditions and cuisine. Each region contributes to the diverse tapestry of the nation, making it a significant player on the global stage."
+  },
+  "fr": {
+    "small": "La France est connue pour sa culture riche et son histoire fascinante. Paris, la capitale, est célèbre pour ses monuments emblématiques comme la Tour Eiffel.",
+    "medium": "La France, avec sa riche histoire et sa culture diversifiée, est un pays d'une grande beauté. Paris, la capitale, est renommée pour ses monuments emblématiques, comme la Tour Eiffel et le Louvre. La campagne française offre des paysages pittoresques et des villages charmants, tandis que des villes comme Lyon et Marseille sont célèbres pour leur gastronomie et leur patrimoine historique.",
+    "large": "La France est un pays aux multiples facettes, offrant à la fois une richesse culturelle et une beauté naturelle. Paris, la capitale, est le cœur culturel de la France, avec des sites historiques tels que Notre-Dame et le Palais du Louvre. Les régions comme la Provence sont célèbres pour leurs paysages pittoresques et leur vin, tandis que la Bretagne offre des côtes dramatiques et une culture unique. En outre, la France est un leader dans les domaines de la mode, de la gastronomie et des arts, faisant de chaque visite une expérience mémorable."
+  },
+  "cn": {
+    "small": "中国是一个历史悠久的国家。它拥有丰富的文化遗产和现代化的大城市，如北京和上海。",
+    "medium": "中国是一个拥有悠久历史和丰富文化的国家。北京作为首都，拥有许多著名的历史遗迹，如长城和故宫。上海则是现代化的代表，拥有繁忙的商业区和令人惊叹的摩天大楼。中国的乡村也有其独特的魅力，如桂林山水和西湖风景。",
+    "large": "中国是一个拥有丰富历史和多样文化的国家。北京是中国的政治和文化中心，拥有众多历史遗迹，如长城、故宫和天安门广场。上海作为中国最大的城市，代表着现代化的面貌，拥有繁忙的商业区和独特的城市风貌。中国的自然景观也非常壮观，从桂林的山水到云南的高原，每个地区都有其独特的美景。中国的历史悠久，从古代的丝绸之路到现代的经济改革，每一段历史都对世界产生了深远的影响。"
+  },
+  "pt": {
+    "small": "Portugal é conhecido por suas belas praias e história marítima. Lisboa, a capital, tem um charme único com suas ruas de paralelepípedos.",
+    "medium": "Portugal é um país com uma rica herança cultural e belas paisagens. Lisboa, a capital, é famosa por seus bairros históricos e monumentos como a Torre de Belém. Porto, no norte, é conhecida por seu vinho do Porto e arquitetura pitoresca. O país também é conhecido por suas praias ao longo da costa do Algarve e a região vinícola do Douro.",
+    "large": "Portugal é um país encantador com uma rica herança cultural e uma história marítima notável. Lisboa, a capital, é uma cidade vibrante com uma mistura de história e modernidade. As ruas de paralelepípedos do Bairro Alto e as vistas do Castelo de São Jorge são apenas algumas das atrações da cidade. Porto, localizada ao norte, é famosa pelo seu vinho do Porto e pela arquitetura única das suas pontes e igrejas. O país oferece uma variedade de paisagens, desde as praias do Algarve até as montanhas de Serra da Estrela, além de uma rica tradição gastronômica e vinícola. Portugal é um lugar que oferece tanto beleza natural quanto uma profunda história cultural."
+  },
+  "es": {
+    "small": "España es conocida por su rica historia y vibrante cultura. Madrid, la capital, es famosa por su vida nocturna y museos como el Prado.",
+    "medium": "España es un país con una rica herencia cultural y una historia vibrante. Madrid, la capital, es conocida por su vida nocturna animada y sus famosos museos, como el Museo del Prado y el Museo Reina Sofía. Barcelona, en la costa este, es famosa por su arquitectura modernista y su playa. El país también ofrece paisajes variados, desde las playas de la Costa del Sol hasta las montañas de los Pirineos.",
+    "large": "España es un país con una rica herencia cultural y una historia fascinante que abarca siglos. Madrid, la capital, es un centro cultural con una vibrante vida nocturna y una impresionante colección de museos, como el Prado y el Reina Sofía. Barcelona, ubicada en la costa noreste, es famosa por su arquitectura modernista, como la Sagrada Familia, y su animada escena cultural. Además, España ofrece una diversidad de paisajes, desde las playas soleadas de la Costa del Sol hasta las montañas nevadas de los Pirineos. La rica historia del país incluye desde el esplendor del Imperio Español hasta la transición a la democracia en el siglo XX. La gastronomía española, con platos icónicos como la paella y las tapas, también refleja la diversidad cultural del país."
+  }
+}

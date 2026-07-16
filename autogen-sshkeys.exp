@@ -1,0 +1,167 @@
+#!/usr/bin/expect
+
+# This script is a modified version of https://www.since2k7.com/blog/2018/12/06/automate-password-less-ssh-between-thousands-of-linux-servers/
+# ToDo: Test
+
+set prompt {[#>$] }
+set user $env(USER)
+set this_host [exec /usr/bin/hostname]
+catch {set this_host $env(HOSTNAME)}
+set this_ip [ string trim [exec /usr/bin/hostname -I]]
+
+puts "Hostname is: $this_host"
+puts "IP is: $this_ip"
+
+# Updated to use /etc/hosts file for server_list
+set etc_hosts_file [open "/etc/hosts"]
+set etc_hosts_contents [split [read $etc_hosts_file] "\n"]
+close $etc_hosts_file
+set server_ip_list {}
+
+set ip_regexp {(?:\d+\.){3}\d+}
+
+proc ssh_host {host} {
+    spawn ssh $user@$server_ip
+    expect {
+        "yes/no" {
+         send "yes\n"
+             exp_continue
+         }
+        "*password:" {
+            send "$passwd\n"
+            exp_continue
+         }
+         timeout {
+             send_user "SSH timed out from $this_ip to $server_ip"
+             continue
+        }
+   }
+} 
+
+proc gen_sshkey {
+puts "Generating RSA Key"
+    # Generate RSA Key
+    send "ssh-keygen -t rsa\n"
+    expect -re "id_rsa\\): "
+        send "\n"
+    expect {
+        "Overwrite (y/n)" {
+            send "n\n"
+         }
+         expect -re "passphrase\\): " {
+             send "\n"
+             exp_continue
+         }
+         expect -re "again: " {
+             send "\n"
+         }
+    }
+}
+
+foreach etc_host_line $etc_hosts_contents {
+	regexp $ip_regexp $etc_host_line match_ip
+	if {[info exists match_ip]} {
+		if { [expr {! [regexp {^127} $match_ip]}]} {
+			puts "Adding ip $match_ip to server list"
+				lappend server_ip_list $match_ip
+				unset match_ip
+		}
+	} 
+}
+
+# Ask user for password, in case password-less SSH not enabled
+stty -echo
+send "Password:"
+expect {
+	-re "(.*)\n" {
+		send "\n"
+			set passwd $expect_out(1,string)
+			send "Confirm:"
+			expect {
+				-re "(.*)\n" {
+					send "\n"
+						if ![string match $passwd $expect_out(1,string)] {
+							send_user "Password mismatch\n"
+								stty echo
+								exit
+						}
+				}
+				timeout {
+					send_user "\n---Timeout---\n"
+						exit
+				}
+			}
+	}
+	timeout {
+		send_user "\n---Timeout---\n"
+			exit
+	}
+}
+stty echo
+
+foreach server_ip $server_ip_list {
+    # Generate SSH Keys for all hosts
+    if { [expr {! [string match $server_ip $this_ip]}]} {
+        # If the host is remote, spawn an ssh session
+        ssh_host $server_ip	
+	expect -re $prompt {
+            gen_sshkey
+        }
+    else {
+        gen_sshkey
+    }
+
+    # Create .ssh directory. Ideally, this directory should already exist
+    foreach ip $server_ip_list {
+        if [string match $ip $server_ip] {
+            # DO not create directory on local machine
+            puts "Skipping creation of .ssh directory for local machine with IP: $ip"
+            continue
+        }
+	send "ssh $user@$ip mkdir -p .ssh\n"
+			expect {
+				"yes/no" {
+					send "yes\n"
+					exp_continue
+				}
+				"*password:" {
+					send "$passwd\n"
+				}
+				timeout {
+					send_user "SSH timed out from $server_ip to $ip"
+					continue
+				}
+				-re $prompt {}
+			}
+		}
+
+		# Copy public key to authorized_keys on remote server
+		foreach ip $server_ip_list {
+			if [string match $ip $server_ip] {
+			# Do not copy keys to local machine
+				puts "Skipping copy of keys to local machine with IP: $ip"
+				continue
+			}
+			puts "Copying SSH keys for $user to $ip"
+			send "ssh-copy-id -i .ssh/id_rsa.pub $user@$ip\n"
+			expect {
+				"*\\(yes/no\\)? " {
+					send "yes\n"
+					exp_continue
+				}
+				"*password: " {
+					send "$passwd\n"
+				}
+				timeout {
+					send_user "SSH timed out from $server_ip to $ip"
+					continue
+				}
+				-re $prompt {}
+			}
+		}
+	}
+
+	send "\n"
+	send "exit\n"
+	expect -re $prompt
+}
