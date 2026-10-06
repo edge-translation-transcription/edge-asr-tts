@@ -80,10 +80,11 @@ For more information on why SSH is needed, see [ansible node requirements](https
 
 ```console
 git clone https://github.com/edge-translation-transcription/edge-asr-tts.git
-cd r4a
+cd edge-asr-tts
 export R4ALL_DIR=`pwd`
 # REPLACE THE VARIABLE BELOW WITH THE PASSWORD YOU WANT YOUR GRAFANA ADMIN TO HAVE
 export GRAFANA_ADMIN_PASSWORD='your_grafana_password' # Use single quotes so special characters are not interpreted
+chmod +x base-config.sh
 sudo -E ./base-config.sh # This will install the necessary packages
 ```
 
